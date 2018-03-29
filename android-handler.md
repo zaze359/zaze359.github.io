@@ -1,9 +1,18 @@
 ---
 layout: default
+
 ---
 
-# 消息机制篇
+Tags : ZAZE
 
+---
+
+[TOC]
+
+---
+
+
+## 消息机制篇
 
 ```
 - Looper调用prepare(),在当前执行的线程中生成仅且一个Looper实例，这个实例包含一个MessageQueue对象
@@ -13,14 +22,82 @@ layout: default
 - 回调创建这个消息的handler中的dispathMessage方法，
 ```
 
-## 1. 消息(Message)
+### 1. 消息(Message)
+
+```
+public final class Message implements Parcelable{
+    private static Message sPool;
+}
+```
 ```
 建议使用Message.obtain()方法生成Message对象; 因为Message内部维护了一个Message池用于Message的复用，避免使用new 重新分配内存
 ```
 
-## 2. 消息队列(MessageQueue)
 
-## 3. 消息循环(Looper)
+
+### 2. 消息队列(MessageQueue)
+
+> 图片摘自 **Android的设计和实现**
+
+![image_1c9odn8dlocl1lnh18mkahqbdo9.png-85.5kB][1]
+
+```
+java层实例化对象时, 同时native层也完成初始化（NativeMessageQueue）
+```
+
+```
+MessageQueue含有个Message队列 mMessages
+
+boolean enqueueMessage(Message msg, long when) {
+    ...
+    Message p = mMessages;
+    boolean needWake;
+    // 先和消息队列的头进行比对
+    if (p == null || when == 0 || when < p.when) {
+        // 若新消息执行时间小于队列头消息, 将最新消息放到队列头, next 执行当前的队列头
+        msg.next = p;
+        mMessages = msg;
+    } else { message in the queue.
+        needWake = mBlocked && p.target == null && msg.isAsynchronous();
+        Message prev;
+        for (;;) {
+            prev = p;
+            p = p.next;
+            if (p == null || when < p.when) {
+                break;
+            }
+            if (needWake && p.isAsynchronous()) {
+                needWake = false;
+            }
+        }
+        msg.next = p; // invariant: p == prev.next
+        prev.next = msg;
+    }
+
+    // We can assume mPtr != 0 because mQuitting is false.
+    if (needWake) {
+        nativeWake(mPtr);
+    }
+}
+
+```
+
+
+```
+next()方法
+
+ Message next() {
+     int nextPollTimeoutMillis = 0;
+     for (;;) {
+        // 
+        nativePollOnce(ptr, nextPollTimeoutMillis);
+     }
+ }
+```
+
+
+
+### 3. 消息循环(Looper)
 
 ```
 - prepare()与当前线程绑定。
@@ -63,7 +140,7 @@ public static void loop() {
 }
 ```
 
-## 4. 消息处理器(Handler)
+### 4. 消息处理器(Handler)
 
 ```
 - 生成Handler实例同时获取到当前线程的Looper对象 
@@ -112,6 +189,14 @@ private static void handleCallback(Message message) {
     message.callback.run();
 }
 ```
+
+## 一探native
+
+
+
+
+
+## ~！@#￥%……&*（
 
 ### HandleThread
 
@@ -169,3 +254,11 @@ class IdleOnce implements MessageQueue.IdleHandler {
 ```
 
 [back](./)
+
+------
+作者 : [口戛口崩月危.Z][author]
+
+[author]: https://zaze359.github.io
+
+
+  [1]: http://static.zybuluo.com/zaze/kbfxaf2elx70xzzpc1ue4n8m/image_1c9odn8dlocl1lnh18mkahqbdo9.png
