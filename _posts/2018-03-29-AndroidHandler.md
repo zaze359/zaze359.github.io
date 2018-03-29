@@ -1,5 +1,6 @@
 ---
 layout: default
+title: 消息机制篇
 ---
 
 # 消息机制篇

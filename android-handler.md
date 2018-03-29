@@ -25,14 +25,8 @@ Tags : ZAZE
 ### 1. 消息(Message)
 
 ```
-public final class Message implements Parcelable{
-    private static Message sPool;
-}
-```
-```
 建议使用Message.obtain()方法生成Message对象; 因为Message内部维护了一个Message池用于Message的复用，避免使用new 重新分配内存
 ```
-
 
 
 ### 2. 消息队列(MessageQueue)
@@ -104,7 +98,7 @@ next()方法
 - loop()方法，通过MessageQueue.next()获取取消息，交给Message.target.dispatchMessage分发处理(target指Handler, 在Handler.enqueueMessage中被赋值)。
 ```
 
-- prepare()
+- Looper.prepare()
 
 ```
 /**
@@ -119,7 +113,7 @@ private static void prepare(boolean quitAllowed) {
 }
 ```
 
-- loop()
+- Looper.loop()
 
 ```
 /**
@@ -146,13 +140,13 @@ public static void loop() {
 - 生成Handler实例同时获取到当前线程的Looper对象 
 ```
 
-- sendMessage()
+- Handler.sendMessage()
 
 ```
 将自身赋值给msg.target, 并将消息放入MessageQueue中
 ```
 
-- post(new Runnable())
+- Handler.post(new Runnable())
 
 ```
 实际是发送了一条消息,此处的Runnable并没有创建线程，只是作为一个callback使用
@@ -168,7 +162,7 @@ private static Message getPostMessage(Runnable r) {
 }
 ```
 
-- **dispatchMessage()消息分配**
+- **Handler.dispatchMessage()消息分配**
 
 ```
 以下源码可以看出, 当使用post()发送消息时, 最后会调用runnable.run()回调。sendMessage()则是执行handleMessage()， 这个就是我们构建对象时重写的方法
