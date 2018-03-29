@@ -1,8 +1,5 @@
 ---
-title: Android Handler
-auto-header: none
-layout : page
-order: 1
+layout: default
 ---
 
 # 消息机制篇

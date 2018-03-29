@@ -1,8 +1,5 @@
 ---
-title: Android Handler
-auto-header: none
-layout : page
-order: 1
+layout: default
 ---
 
 # 消息机制篇
@@ -142,7 +139,7 @@ private static void handleCallback(Message message) {
 - 消息队列头部的处理时间未到
 ```
 
-* 使用
+* 练习
 
 ```
 可以参考ActivityThread类中的空闲时执行gc流程
