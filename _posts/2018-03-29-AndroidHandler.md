@@ -74,8 +74,9 @@ public class ThreadLocal<T> {
 #### 1.2 消息循环(Looper)
 
 ```
+
 - prepare()与当前线程绑定。
-- loop()方法，通过MessageQueue.next()获取取消息，交给Message.target.dispatchMessage分发处理(target指Handler, 在Handler.enqueueMessage中被赋值)。
+- loop()方法中，通过MessageQueue.next()获取消息(消息驱动)，交给Message.target.dispatchMessage分发处理(target指Handler, 在Handler.enqueueMessage中被赋值)。
 ```
 
 ```
@@ -86,7 +87,11 @@ public class Looper {
     final Thread mThread;
     
     /**
-     * 构造
+     * 创建了MessageQueue对象
+     * 建立了MessageQueue和NativeMessageQueue的关系
+     * 初始化了Native层的Looper
+     * 持有当前线程的引用
+     * 
      **/
     private Looper() {
         // 创建了MessageQueue对象
@@ -262,37 +267,35 @@ private static void handleCallback(Message message) {
 
 #### 2.1 Looper.cpp
 
+与java 层的Looper完全不同
+主要是负责监听管道
+
 ```
 Looper::Looper(bool allowNonCallbacks) :
         mAllowNonCallbacks(allowNonCallbacks), mSendingMessage(false),
         mResponseIndex(0), mNextMessageUptime(LLONG_MAX) {
     int wakeFds[2];
+    // 创建一个管道
     int result = pipe(wakeFds);
-    LOG_ALWAYS_FATAL_IF(result != 0, "Could not create wake pipe.  errno=%d", errno);
-
+    // 管道读端
     mWakeReadPipeFd = wakeFds[0];
+    // 管道写端
     mWakeWritePipeFd = wakeFds[1];
-
+    // 给读管道设置非阻塞的flag, 保证在没有缓冲区可读的情况下立即返回而不阻塞。
     result = fcntl(mWakeReadPipeFd, F_SETFL, O_NONBLOCK);
-    LOG_ALWAYS_FATAL_IF(result != 0, "Could not make wake read pipe non-blocking.  errno=%d",
-            errno);
-
+    // 同理给写管道设置非阻塞
     result = fcntl(mWakeWritePipeFd, F_SETFL, O_NONBLOCK);
-    LOG_ALWAYS_FATAL_IF(result != 0, "Could not make wake write pipe non-blocking.  errno=%d",
-            errno);
-
 #ifdef LOOPER_USES_EPOLL
-    // Allocate the epoll instance and register the wake pipe.
+    // 分配epoll实例，注册唤醒管道并监听
     mEpollFd = epoll_create(EPOLL_SIZE_HINT);
-    LOG_ALWAYS_FATAL_IF(mEpollFd < 0, "Could not create epoll instance.  errno=%d", errno);
-
+    // 定义监听事件
     struct epoll_event eventItem;
-    memset(& eventItem, 0, sizeof(epoll_event)); // zero out unused members of data field union
+    memset(& eventItem, 0, sizeof(epoll_event));
+    // 监听EPOLLIN类型事件, 该事件表示对应的文件有数据可读
     eventItem.events = EPOLLIN;
     eventItem.data.fd = mWakeReadPipeFd;
+    // 注册监听事件, 这里只监听mWakeReadPipeFd
     result = epoll_ctl(mEpollFd, EPOLL_CTL_ADD, mWakeReadPipeFd, & eventItem);
-    LOG_ALWAYS_FATAL_IF(result != 0, "Could not add wake read pipe to epoll instance.  errno=%d",
-            errno);
 #else
     // Add the wake pipe to the head of the request list with a null callback.
     struct pollfd requestedFd;
@@ -325,6 +328,7 @@ Looper::Looper(bool allowNonCallbacks) :
     mSampledTimeoutPollLatencySum = 0;
 #endif
 }
+
 // ---------------------------------------------------
 static pthread_once_t gTLSOnce = PTHREAD_ONCE_INIT;
 sp<Looper> Looper::getForThread() {
@@ -370,14 +374,15 @@ NativeMessageQueue::NativeMessageQueue() {
 
 ```
 
-
-
 - nativeInit()
 
 ```
 /**
- *
- * obj 表示调用native 的Java类
+ * 创建一个NativeMessageQueue对象
+ * 将Java层与Native层的MessageQueue关联起来
+ * 从而在Java层中可以通过mPtr成员变量来访问Native层的NativeMessageQueue对象
+ * 
+ * [obj]: 表示调用native 的Java类
  **/
 static void android_os_MessageQueue_nativeInit(JNIEnv* env, jobject obj) {
     // JNI层创建一个NativeMessageQueue对象
@@ -389,6 +394,21 @@ static void android_os_MessageQueue_nativeInit(JNIEnv* env, jobject obj) {
     // 将Java层与Native层的MessageQueue关联起来
     android_os_MessageQueue_setNativeMessageQueue(env, obj, nativeMessageQueue);
 }
+
+static void android_os_MessageQueue_setNativeMessageQueue(JNIEnv* env, jobject messageQueueObj,
+        NativeMessageQueue* nativeMessageQueue) {
+        // SetIntField是JNI层向Java传输数据的方法。
+        // 这里将nativeMessageQueue的地址保存到Java层MessageQueue对象的mPtr成员变量中
+    env->SetIntField(messageQueueObj, gMessageQueueClassInfo.mPtr,
+             reinterpret_cast<jint>(nativeMessageQueue));
+}
+
+static struct {
+    // jfieldID表示Java层成员变量的名字,因此这里指代Java层MessageQueue对象的mPtr成员变量
+    jfieldID mPtr;   // native object attached to the DVM MessageQueue
+} gMessageQueueClassInfo;
+
+
 ```
 
 
