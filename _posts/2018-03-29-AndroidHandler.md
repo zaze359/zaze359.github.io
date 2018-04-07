@@ -71,10 +71,18 @@ public class ThreadLocal<T> {
 建议使用Message.obtain()方法生成Message对象; 因为Message内部维护了一个Message池用于Message的复用，避免使用new 重新分配内存
 ```
 
+```
+public final class Message implements Parcelable {
+
+
+}
+```
+
+
+
 #### 1.2 消息循环(Looper)
 
 ```
-
 - prepare()与当前线程绑定。
 - loop()方法中，通过MessageQueue.next()获取消息(消息驱动)，交给Message.target.dispatchMessage分发处理(target指Handler, 在Handler.enqueueMessage中被赋值)。
 ```
@@ -214,8 +222,28 @@ next()方法
 
 #### 1.4 消息处理器(Handler)
 
+Handle是Looper线程的消息处理器, 承担了发送消息和处理消息两部分工作。
+
+
+- 构造函数
+
 ```
-- 生成Handler实例同时获取到当前线程的Looper对象 
+final MessageQueue mQueue;
+final Looper mLooper;
+final Callback mCallback;
+IMessenger mMessenger; // 用于跨进程发送消息
+public Handler() {
+    ....
+    // 将 Looper、MessageQueue和Handler关联到一起
+    mLooper = Looper.myLooper();
+    if (mLooper == null) {
+    // 必须调用Looper.prepare()后才能使用
+        throw new RuntimeException(
+            "Can't create handler inside thread that has not called Looper.prepare()");
+    }
+    mQueue = mLooper.mQueue;
+    mCallback = null;
+}
 ```
 
 - Handler.sendMessage()
@@ -328,8 +356,9 @@ Looper::Looper(bool allowNonCallbacks) :
     mSampledTimeoutPollLatencySum = 0;
 #endif
 }
+```
 
-// ---------------------------------------------------
+```
 static pthread_once_t gTLSOnce = PTHREAD_ONCE_INIT;
 sp<Looper> Looper::getForThread() {
     // initTLSKey 指代 initTLSKey()函数 内部调用pthread_key_create(...)创建线程局部对象
@@ -353,15 +382,15 @@ void Looper::setForThread(const sp<Looper>& looper) {
         old->decStrong((void*)threadDestructor);
     }
 }
-
 ```
-
 
 #### 2.2 android_os_MessageQueue.cpp
 
+这里其实也实现了和Java层Looper.prepare()方法相同的功能 
+
 - 构造函数
+
 ```
-// 这里其实也实现了和Java层Looper.prepare()方法相同的功能 
 NativeMessageQueue::NativeMessageQueue() {
     // 查询是否存在
     mLooper = Looper::getForThread();
@@ -371,7 +400,6 @@ NativeMessageQueue::NativeMessageQueue() {
         Looper::setForThread(mLooper);
     }
 }
-
 ```
 
 - nativeInit()
@@ -381,7 +409,6 @@ NativeMessageQueue::NativeMessageQueue() {
  * 创建一个NativeMessageQueue对象
  * 将Java层与Native层的MessageQueue关联起来
  * 从而在Java层中可以通过mPtr成员变量来访问Native层的NativeMessageQueue对象
- * 
  * [obj]: 表示调用native 的Java类
  **/
 static void android_os_MessageQueue_nativeInit(JNIEnv* env, jobject obj) {
@@ -407,13 +434,7 @@ static struct {
     // jfieldID表示Java层成员变量的名字,因此这里指代Java层MessageQueue对象的mPtr成员变量
     jfieldID mPtr;   // native object attached to the DVM MessageQueue
 } gMessageQueueClassInfo;
-
-
 ```
-
-
-
-
 
 ## ~！@#￥%……&*（
 
