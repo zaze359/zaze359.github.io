@@ -19,6 +19,11 @@ Tags : ZAZE
 Android 扩展了线程的退出机制，在启动线程时，在线程内部创建一个消息队列， 然后让线程进入无限循环；
 在这个无限循环中，线程会不断的检查消息队列中是否是消息。如果需要执行某个任务，就向线程的消息队列中发送消息，循环检测到有消息到来 便会获取这个消息 进而执行它。如果没有则线程进入等待状态。
 
+
+#### 0.1 
+
+
+
 ### 1. 浅见Java层
 
 ```
@@ -67,14 +72,88 @@ public class ThreadLocal<T> {
 
 #### 1.1 消息(Message)
 
-```
-建议使用Message.obtain()方法生成Message对象; 因为Message内部维护了一个Message池用于Message的复用，避免使用new 重新分配内存
-```
+了解一下[Parcelable][Parcelable]和Serializable序列化接口, 号称快10倍, 不过使用相对复杂。
 
 ```
 public final class Message implements Parcelable {
-
-
+    // 消息码, 区分消息类型
+    public int what;
+    ...
+    // 表示什么时候执行
+    /*package*/ long when;
+    ...
+    // 存储了下一条消息的引用
+    /*package*/ Message next; 
+    private static final Object sPoolSync = new Object();
+    // 消息池
+    private static Message sPool;
+    // 消息池当前大小
+    private static int sPoolSize = 0;
+    private static final int MAX_POOL_SIZE = 10;
+    
+    /**
+     * 获取消息的通用方法
+     **/
+    public static Message obtain() {
+        synchronized (sPoolSync) {
+            if (sPool != null) {
+                // 指向消息的头部
+                Message m = sPool;
+                // 将消息池头部指向下一条
+                sPool = m.next;
+                m.next = null;
+                // 消息池大小减1
+                sPoolSize--;
+                // 返回从消息池中取得的消息
+                return m;
+            }
+        }
+        // 消息池为空就创建一个消息
+        return new Message();
+    }
+    
+    // 实现Parcelable接口的方法, 可以将写入Parcel的对象还原为Message
+    public static final Parcelable.Creator<Message> CREATOR  = new Parcelable.Creator<Message>() {
+        public Message createFromParcel(Parcel source) {
+            Message msg = Message.obtain();
+            msg.readFromParcel(source);
+            return msg;
+        }
+        
+        public Message[] newArray(int size) {
+            return new Message[size];
+        }
+    };
+    
+    /**
+     * 此处完成了消息池的初始化
+     * 使用消息的一方(),只要调用了recycle方法便把会废弃的消息放入消息池中以便重新利用。
+     * 放入时这个消息的数据将被清空, 若要使用消息池中的消息, 需要调用obtain方法重新初始化
+     **/
+    public void recycle() {
+        clearForRecycle();
+        synchronized (sPoolSync) {
+            if (sPoolSize < MAX_POOL_SIZE) {
+                next = sPool;
+                sPool = this;
+                sPoolSize++;
+            }
+        }
+    }
+    
+    /*package*/ void clearForRecycle() {
+        flags = 0;
+        what = 0;
+        arg1 = 0;
+        arg2 = 0;
+        obj = null;
+        replyTo = null;
+        when = 0;
+        target = null;
+        callback = null;
+        data = null;
+    }
+    
 }
 ```
 
@@ -163,9 +242,7 @@ public class MessageQueue {
     
 }
 
-
 ```
-
 
 ```
 MessageQueue含有个Message队列 mMessages
@@ -246,11 +323,6 @@ public Handler() {
 }
 ```
 
-- Handler.sendMessage()
-
-```
-将自身赋值给msg.target, 并将消息放入MessageQueue中
-```
 
 - Handler.post(new Runnable())
 
@@ -266,6 +338,16 @@ private static Message getPostMessage(Runnable r) {
     m.callback = r;
     return m;
 }
+```
+
+
+- Handler.sendMessage()
+
+```
+将自身赋值给msg.target, 并将消息放入MessageQueue中
+
+
+
 ```
 
 - **Handler.dispatchMessage()消息分配**
@@ -508,3 +590,6 @@ class IdleOnce implements MessageQueue.IdleHandler {
 
 [author]: https://zaze359.github.io
 [MessageQueue于NativeMessageQueue]: http://static.zybuluo.com/zaze/kbfxaf2elx70xzzpc1ue4n8m/image_1c9odn8dlocl1lnh18mkahqbdo9.png
+
+[Parcelable]:https://blog.csdn.net/justin_1107/article/details/72903006
+
