@@ -163,7 +163,7 @@ public final class Message implements Parcelable {
 
 ```
 - prepare()与当前线程绑定。
-- loop()方法中，通过MessageQueue.next()获取消息(消息驱动)，交给Message.target.dispatchMessage分发处理(target指Handler, 在Handler.enqueueMessage中被赋值)。
+- loop()方法，循环调用MessageQueue.next()获取消息(消息驱动)，交给Message.target.dispatchMessage分发处理(target指Handler, 在Handler.enqueueMessage中被赋值)。
 ```
 
 ```
@@ -222,13 +222,16 @@ public class Looper {
 
 #### 1.3 消息队列(MessageQueue)
 
-```
 java层实例化对象时, 同时native层也完成初始化（NativeMessageQueue）
-```
 
 ![image_1c9odn8dlocl1lnh18mkahqbdo9.png-85.5kB][MessageQueue于NativeMessageQueue]
 
+
+- 构造函数
+
 ```
+// 按照执行时间排序的消息队列
+Message mMessages;
 public class MessageQueue {
     boolean mQuitAllowed = true; // 默认允许推出, 没看到置为false的地方
     private int mPtr; // used by native code
@@ -241,46 +244,63 @@ public class MessageQueue {
     }
     
 }
-
 ```
 
-```
-MessageQueue含有个Message队列 mMessages
+- MessageQueue.enqueueMessage()
 
-boolean enqueueMessage(Message msg, long when) {
-    ...
-    Message p = mMessages;
-    boolean needWake;
-    // 先和消息队列的头进行比对
-    if (p == null || when == 0 || when < p.when) {
-        // 若新消息执行时间小于队列头消息执行时间, 将新消息next指向当前的队列头, 新消息放到队列头
-        msg.next = p;
-        mMessages = msg;
-    } else { message in the queue.
-        needWake = mBlocked && p.target == null && msg.isAsynchronous();
-        Message prev;
-        // 循环当前消息队列 挑选出 第一个比新消息执行时间晚的消息
-        for (;;) {
-            prev = p;
-            p = p.next;
-            if (p == null || when < p.when) {
-                break;
-            }
-            if (needWake && p.isAsynchronous()) {
-                needWake = false;
-            }
-        }
-        // 交换位置
-        msg.next = p;
-        prev.next = msg;
+```
+final boolean enqueueMessage(Message msg, long when) {
+    // 判断消息是否被使用, 新消息一定是未使用, 在next()里面被处理的消息将被标记为FLAG_IN_USE
+    if (msg.isInUse()) {
+        throw new AndroidRuntimeException(msg + " This message is already in use.");
     }
-
-    // We can assume mPtr != 0 because mQuitting is false.
+    // mQuitAllowed默认为true, 没找到设置为false的地方
+    if (msg.target == null && !mQuitAllowed) {
+        throw new RuntimeException("Main thread not allowed to quit");
+    }
+    final boolean needWake;
+    synchronized (this) {
+        if (mQuiting) {
+            // 默认false, 当target(Handler) 所在线程异常退出时置为true
+            RuntimeException e = new RuntimeException(
+                msg.target + " sending message to a Handler on a dead thread");
+            Log.w("MessageQueue", e.getMessage(), e);
+            return false;
+        } else if (msg.target == null) {
+            mQuiting = true;
+        }
+        // 给新入队消息赋值执行时间
+        msg.when = when;
+        // 取出消息队列头部
+        Message p = mMessages;
+        // 对应三种情况（此时需要将新消息插入头部）
+        // 1）消息队列为空 
+        // 2）新入队消息需要立即执行 
+        // 3）新入队消息的执行时间早于消息队列头部消息的执行时间
+        if (p == null || when == 0 || when < p.when) {
+            msg.next = p;
+            mMessages = msg;
+            // 有新消息要处理 若之前是阻塞状态则需要唤醒
+            needWake = mBlocked;
+        } else {
+            // 遍历根据执行时间插入到指定位置
+            Message prev = null;
+            while (p != null && p.when <= when) {
+                prev = p;
+                p = p.next;
+            }
+            msg.next = prev.next;
+            prev.next = msg;
+            // 头部消息没有发生变化 不需要唤醒
+            needWake = false;
+        }
+    }
     if (needWake) {
+        // 唤醒
         nativeWake(mPtr);
     }
+    return true;
 }
-
 ```
 
 
@@ -341,13 +361,32 @@ private static Message getPostMessage(Runnable r) {
 ```
 
 
-- Handler.sendMessage()
+- Handler.sendMessageAtTime()
 
 ```
 将自身赋值给msg.target, 并将消息放入MessageQueue中
 
-
-
+/**
+ * uptimeMillis 表示何时处理这个消息
+ *
+ *
+ **/
+public boolean sendMessageAtTime(Message msg, long uptimeMillis){
+    boolean sent = false;
+    MessageQueue queue = mQueue;
+    if (queue != null) {
+        // 将当前的Handler 指定为处理消息的目标端
+        msg.target = this;
+        // 入队
+        sent = queue.enqueueMessage(msg, uptimeMillis);
+    }
+    else {
+        RuntimeException e = new RuntimeException(
+            this + " sendMessageAtTime() called with no mQueue");
+        Log.w("Looper", e.getMessage(), e);
+    }
+    return sent;
+}
 ```
 
 - **Handler.dispatchMessage()消息分配**
@@ -377,8 +416,10 @@ private static void handleCallback(Message message) {
 
 #### 2.1 Looper.cpp
 
-与java 层的Looper完全不同
-主要是负责监听管道
+Java层的Looper主要是负责从MessageQueue中循环读取消息分发给Handler处理
+Native层Looper主要是负责监听ReadPipe(读管道)，发送消息(Java中是由Handler处理的)
+
+- 构造函数
 
 ```
 Looper::Looper(bool allowNonCallbacks) :
@@ -408,49 +449,18 @@ Looper::Looper(bool allowNonCallbacks) :
     result = epoll_ctl(mEpollFd, EPOLL_CTL_ADD, mWakeReadPipeFd, & eventItem);
 #else
     // Add the wake pipe to the head of the request list with a null callback.
-    struct pollfd requestedFd;
-    requestedFd.fd = mWakeReadPipeFd;
-    requestedFd.events = POLLIN;
-    mRequestedFds.push(requestedFd);
-
-    Request request;
-    request.fd = mWakeReadPipeFd;
-    request.callback = NULL;
-    request.ident = 0;
-    request.data = NULL;
-    mRequests.push(request);
-
-    mPolling = false;
-    mWaiters = 0;
+    ...
 #endif
-
 #ifdef LOOPER_STATISTICS
-    mPendingWakeTime = -1;
-    mPendingWakeCount = 0;
-    mSampledWakeCycles = 0;
-    mSampledWakeCountSum = 0;
-    mSampledWakeLatencySum = 0;
-
-    mSampledPolls = 0;
-    mSampledZeroPollCount = 0;
-    mSampledZeroPollLatencySum = 0;
-    mSampledTimeoutPollCount = 0;
-    mSampledTimeoutPollLatencySum = 0;
+    ...
 #endif
 }
 ```
 
-```
-static pthread_once_t gTLSOnce = PTHREAD_ONCE_INIT;
-sp<Looper> Looper::getForThread() {
-    // initTLSKey 指代 initTLSKey()函数 内部调用pthread_key_create(...)创建线程局部对象
-    // PTHREAD_ONCE_INIT  在Linex 线程模型中表示在本线程只执行一次
-    int result = pthread_once(& gTLSOnce, initTLSKey);
-    LOG_ALWAYS_FATAL_IF(result != 0, "pthread_once failed");
-    // 返回线程局部对象中的Looper对象
-    return (Looper*)pthread_getspecific(gTLSKey);
-}
+- Looper::getForThread(); Looper::setForThread();
 
+```
+// 将Looper放入到线程中
 void Looper::setForThread(const sp<Looper>& looper) {
     sp<Looper> old = getForThread(); // also has side-effect of initializing TLS
     // 增加新引用的计数
@@ -464,7 +474,40 @@ void Looper::setForThread(const sp<Looper>& looper) {
         old->decStrong((void*)threadDestructor);
     }
 }
+
+static pthread_once_t gTLSOnce = PTHREAD_ONCE_INIT;
+// 获取线程中的Looper
+sp<Looper> Looper::getForThread() {
+    // initTLSKey 指代 initTLSKey()函数 内部调用pthread_key_create(...)创建线程局部对象
+    // PTHREAD_ONCE_INIT  在Linex 线程模型中表示在本线程只执行一次
+    int result = pthread_once(& gTLSOnce, initTLSKey);
+    LOG_ALWAYS_FATAL_IF(result != 0, "pthread_once failed");
+    // 返回线程局部对象中的Looper对象
+    return (Looper*)pthread_getspecific(gTLSKey);
+}
 ```
+
+- Looper::wake() 唤醒
+
+```
+void Looper::wake() {
+    ...
+    ssize_t nWrite;
+    do {
+        // 向管道写入字符串"W"
+        // Looper监听了读管道，当有数据写入时,即有数据可读，处理消息的现场就会因为I/O事件被唤醒
+        nWrite = write(mWakeWritePipeFd, "W", 1);
+    } while (nWrite == -1 && errno == EINTR);
+    if (nWrite != 1) {
+        if (errno != EAGAIN) {
+            LOGW("Could not write wake signal, errno=%d", errno);
+        }
+    }
+}
+```
+
+- Looper::sendMessage() Native层发送消息
+
 
 #### 2.2 android_os_MessageQueue.cpp
 
@@ -484,7 +527,7 @@ NativeMessageQueue::NativeMessageQueue() {
 }
 ```
 
-- nativeInit()
+- android_os_MessageQueue_nativeInit()
 
 ```
 /**
@@ -517,6 +560,23 @@ static struct {
     jfieldID mPtr;   // native object attached to the DVM MessageQueue
 } gMessageQueueClassInfo;
 ```
+
+-  android_os_MessageQueue_nativeWake
+
+```
+static void android_os_MessageQueue_nativeWake(JNIEnv* env, jobject obj, jint ptr) {
+    // ptr 是java层MessageQueue的mPtr成员变量，存储了JNI层创建的 NativeMessageQueue的地址
+    NativeMessageQueue* nativeMessageQueue = reinterpret_cast<NativeMessageQueue*>(ptr);
+    return nativeMessageQueue->wake();
+}
+
+// 最终调用了JNI Looper的wake方法
+void NativeMessageQueue::wake() {
+    mLooper->wake();
+}
+
+```
+
 
 ## ~！@#￥%……&*（
 
