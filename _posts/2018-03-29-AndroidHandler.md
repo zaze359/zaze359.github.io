@@ -20,9 +20,9 @@ Android 扩展了线程的退出机制，在启动线程时，在线程内部创
 在这个无限循环中，线程会不断的检查消息队列中是否是消息。如果需要执行某个任务，就向线程的消息队列中发送消息，循环检测到有消息到来 便会获取这个消息 进而执行它。如果没有则线程进入等待状态。
 
 
-#### 0.1 
+#### 0.1 一图了解
 
-
+绘制中~~
 
 ### 1. 浅见Java层
 
@@ -178,7 +178,6 @@ public class Looper {
      * 建立了MessageQueue和NativeMessageQueue的关系
      * 初始化了Native层的Looper
      * 持有当前线程的引用
-     * 
      **/
     private Looper() {
         // 创建了MessageQueue对象
@@ -188,7 +187,6 @@ public class Looper {
         // 存储当前线程
         mThread = Thread.currentThread();
     }
-    
     
     /**
      *  prepare()只能被调用一次, 否则直接抛出异常
@@ -205,16 +203,29 @@ public class Looper {
      * loop 必须在prepare()后执行，否则报错
      **/
     public static void loop() {
-        final Looper me = myLooper();
+        Looper me = myLooper();
         if (me == null) {
             throw new RuntimeException("No Looper; Looper.prepare() wasn't called on this thread.");
         }
-        .....
-        for(;;) {
-            Message msg = queue.next(); // might block
-            ......
-            msg.target.dispatchMessage(msg);
-            ......
+        MessageQueue queue = me.mQueue;
+        // 在IPCThreadState中记录当前线程所属的PID 和 UID
+        // 了解一下Binder
+        Binder.clearCallingIdentity();
+        final long ident = Binder.clearCallingIdentity();
+        while (true) { 
+            // 循环监听获取消息, 可能阻塞
+            Message msg = queue.next();
+            if (msg != null) {
+                if (msg.target == null) {
+                    return;
+                }
+                ......
+                // 将获取到的消息交给消息处理器
+                msg.target.dispatchMessage(msg);
+                ......
+                // 将处理过的消息回收并放入到消息池中
+                msg.recycle();
+            }
         }
     }
 }
@@ -223,6 +234,7 @@ public class Looper {
 #### 1.3 消息队列(MessageQueue)
 
 java层实例化对象时, 同时native层也完成初始化（NativeMessageQueue）
+保持了一个按照执行时间排序的消息队列，提供了对消息队列管理的一些api
 
 ![image_1c9odn8dlocl1lnh18mkahqbdo9.png-85.5kB][MessageQueue于NativeMessageQueue]
 
@@ -260,11 +272,9 @@ final boolean enqueueMessage(Message msg, long when) {
     }
     final boolean needWake;
     synchronized (this) {
-        if (mQuiting) {
-            // 默认false, 当target(Handler) 所在线程异常退出时置为true
+        if (mQuiting) { // 默认false, 当target(Handler) 所在线程异常退出时置为true
             RuntimeException e = new RuntimeException(
                 msg.target + " sending message to a Handler on a dead thread");
-            Log.w("MessageQueue", e.getMessage(), e);
             return false;
         } else if (msg.target == null) {
             mQuiting = true;
@@ -303,17 +313,70 @@ final boolean enqueueMessage(Message msg, long when) {
 }
 ```
 
+- MessageQueue.next()
 
 ```
-next()方法
-
- Message next() {
-     int nextPollTimeoutMillis = 0;
-     for (;;) {
-        // 
-        nativePollOnce(ptr, nextPollTimeoutMillis);
-     }
- }
+final Message next() {
+    int pendingIdleHandlerCount = -1; // IdleHander的数量, 下面有介绍IdleHandler
+    int nextPollTimeoutMillis = 0; // 空闲等待时间
+    for (;;) {
+        if (nextPollTimeoutMillis != 0) {
+            Binder.flushPendingCommands();
+        }
+        // 传入NativeMessageQueue的地址, 和等待时间
+        nativePollOnce(mPtr, nextPollTimeoutMillis);
+        synchronized (this) {
+            final long now = SystemClock.uptimeMillis();
+            // 取出消息队列头部
+            final Message msg = mMessages;
+            if (msg != null) {
+                final long when = msg.when;
+                // 当前时间大于消息执行时间，消息队列指向下一条, 将执行的消息标记使用并返回
+                if (now >= when) {
+                    mBlocked = false;
+                    mMessages = msg.next;
+                    msg.next = null;
+                    msg.markInUse();
+                    return msg;
+                } else {
+                    nextPollTimeoutMillis = (int) Math.min(when - now, Integer.MAX_VALUE);
+                }
+            } else {
+                nextPollTimeoutMillis = -1;
+            }
+            // 当前时间空闲, 看看有没有IdleHandler需要执行， 若没有则将当前线程状态设置为阻塞
+            if (pendingIdleHandlerCount < 0) {
+                pendingIdleHandlerCount = mIdleHandlers.size();
+            }
+            if (pendingIdleHandlerCount == 0) {
+                mBlocked = true;
+                continue;
+            }
+            if (mPendingIdleHandlers == null) {
+                mPendingIdleHandlers = new IdleHandler[Math.max(pendingIdleHandlerCount, 4)];
+            }
+            mPendingIdleHandlers = mIdleHandlers.toArray(mPendingIdleHandlers);
+        }
+        // 处理空闲消息
+        for (int i = 0; i < pendingIdleHandlerCount; i++) {
+            final IdleHandler idler = mPendingIdleHandlers[i];
+            mPendingIdleHandlers[i] = null; // release the reference to the handler
+            boolean keep = false;
+            try {
+                keep = idler.queueIdle();
+            } catch (Throwable t) {
+                Log.wtf("MessageQueue", "IdleHandler threw exception", t);
+            }
+            if (!keep) {
+                synchronized (this) {
+                    mIdleHandlers.remove(idler);
+                }
+            }
+        }
+        pendingIdleHandlerCount = 0;
+        nextPollTimeoutMillis = 0;
+    }
+}
 ```
 
 
@@ -332,7 +395,7 @@ IMessenger mMessenger; // 用于跨进程发送消息
 public Handler() {
     ....
     // 将 Looper、MessageQueue和Handler关联到一起
-    mLooper = Looper.myLooper();
+    mLooper = Looper.myLooper();4
     if (mLooper == null) {
     // 必须调用Looper.prepare()后才能使用
         throw new RuntimeException(
