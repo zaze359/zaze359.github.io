@@ -384,7 +384,6 @@ final Message next() {
 
 Handle是Looper线程的消息处理器, 承担了发送消息和处理消息两部分工作。
 
-
 - 构造函数
 
 ```
@@ -569,6 +568,173 @@ void Looper::wake() {
 }
 ```
 
+- Looper::pollOnce();
+
+```
+inline int pollOnce(int timeoutMillis) {
+    return pollOnce(timeoutMillis, NULL, NULL, NULL);
+}
+int Looper::pollOnce(int timeoutMillis, int* outFd, int* outEvents, void** outData) {
+    int result = 0;
+    for (;;) {
+        // 处理Response, mResponses由Looper:pushResponse方法填充
+        // 创建Looper对象时mResponseIndex = 0
+        // 这个循环只是返回了Response对应请求的标识信息ident
+        // Response的处理由pollInner方法完成
+        while (mResponseIndex < mResponses.size()) {
+            const Response& response = mResponses.itemAt(mResponseIndex++);
+            ALooper_callbackFunc callback = response.request.callback;
+            if (!callback) {
+                int ident = response.request.ident;
+                int fd = response.request.fd;
+                int events = response.events;
+                void* data = response.request.data;
+                ...
+                if (outFd != NULL) *outFd = fd;
+                if (outEvents != NULL) *outEvents = events;
+                if (outData != NULL) *outData = data;
+                return ident;
+            }
+        }
+        if (result != 0) { // result由pollInner赋值, 默认 = 0
+            ...
+            if (outFd != NULL) *outFd = 0;
+            if (outEvents != NULL) *outEvents = NULL;
+            if (outData != NULL) *outData = NULL;
+            return result;
+        }
+        result = pollInner(timeoutMillis);
+    }
+}
+```
+
+- Looper::pollInner()
+
+```
+int Looper::pollInner(int timeoutMillis) {
+    ...
+    // 根据下一条消息的到期时间调整超时时间。
+    if (timeoutMillis != 0 && mNextMessageUptime != LLONG_MAX) {
+        nsecs_t now = systemTime(SYSTEM_TIME_MONOTONIC);
+        int messageTimeoutMillis = toMillisecondTimeoutDelay(now, mNextMessageUptime);
+        if (messageTimeoutMillis >= 0
+                && (timeoutMillis < 0 || messageTimeoutMillis < timeoutMillis)) {
+            timeoutMillis = messageTimeoutMillis;
+        }
+        ...
+    }
+    // Poll.
+    int result = ALOOPER_POLL_WAKE;
+    mResponses.clear();
+    mResponseIndex = 0;
+    ...
+#ifdef LOOPER_USES_EPOLL
+    // 使用了Linux的epoll机制, 调用epoll_wait监听mEpollFd上的事件。mEpollFd在创建Looper时创建
+    // 若果没有事件发生, 将在epoll_wait中等待，时间就是timeoutMillis
+    struct epoll_event eventItems[EPOLL_MAX_EVENTS];
+    int eventCount = epoll_wait(mEpollFd, eventItems, EPOLL_MAX_EVENTS, timeoutMillis);
+#else
+    // Wait for wakeAndLock() waiters to run then set mPolling to true.
+    mLock.lock();
+    while (mWaiters != 0) {
+        mResume.wait(mLock);
+    }
+    mPolling = true;
+    mLock.unlock();
+    size_t requestedCount = mRequestedFds.size();
+    int eventCount = poll(mRequestedFds.editArray(), requestedCount, timeoutMillis);
+#endif
+    mLock.lock();
+    // 出错或者超时,跳Done
+    if (eventCount < 0) {
+        if (errno == EINTR) {
+            goto Done;
+        }
+        result = ALOOPER_POLL_ERROR;
+        goto Done;
+    }
+    if (eventCount == 0) {
+        ...
+        result = ALOOPER_POLL_TIMEOUT;
+        goto Done;
+    }
+    ...
+#ifdef LOOPER_USES_EPOLL
+    // 处理所有事件
+    for (int i = 0; i < eventCount; i++) {
+        int fd = eventItems[i].data.fd;
+        uint32_t epollEvents = eventItems[i].events;
+        if (fd == mWakeReadPipeFd) {
+            if (epollEvents & EPOLLIN) {
+                awoken();
+            } else {
+                ...
+            }
+        } else {
+            // 监听的其他文件描述符所发出的请求
+            ssize_t requestIndex = mRequests.indexOfKey(fd);
+            if (requestIndex >= 0) {
+                int events = 0;
+                if (epollEvents & EPOLLIN) events |= ALOOPER_EVENT_INPUT;
+                if (epollEvents & EPOLLOUT) events |= ALOOPER_EVENT_OUTPUT;
+                if (epollEvents & EPOLLERR) events |= ALOOPER_EVENT_ERROR;
+                if (epollEvents & EPOLLHUP) events |= ALOOPER_EVENT_HANGUP;
+                // 先不处理, 放入到mResponse中
+                pushResponse(events, mRequests.valueAt(requestIndex));
+            } else {
+                ...
+            }
+        }
+    }
+Done: ;
+    // 忽略不看其他类型的epoll events
+    ....
+    // 具体处理Message和Request
+    mNextMessageUptime = LLONG_MAX;
+    while (mMessageEnvelopes.size() != 0) {
+        // 处理Native层的消息
+        nsecs_t now = systemTime(SYSTEM_TIME_MONOTONIC);
+        const MessageEnvelope& messageEnvelope = mMessageEnvelopes.itemAt(0);
+        if (messageEnvelope.uptime <= now) {
+            { // obtain handler
+                sp<MessageHandler> handler = messageEnvelope.handler;
+                Message message = messageEnvelope.message;
+                mMessageEnvelopes.removeAt(0);
+                mSendingMessage = true;
+                mLock.unlock();
+                ...
+                handler->handleMessage(message); // 处理消息
+            } // release handler
+            mLock.lock();
+            mSendingMessage = false;
+            result = ALOOPER_POLL_CALLBACK;
+        } else {
+            // 设置下次唤醒时间
+            mNextMessageUptime = messageEnvelope.uptime;
+            break;
+        }
+    }
+    mLock.unlock();
+    // Invoke all response callbacks.
+    for (size_t i = 0; i < mResponses.size(); i++) {
+        const Response& response = mResponses.itemAt(i);
+        ALooper_callbackFunc callback = response.request.callback;
+        if (callback) {
+            int fd = response.request.fd;
+            int events = response.events;
+            void* data = response.request.data;
+            ...
+            int callbackResult = callback(fd, events, data);
+            if (callbackResult == 0) {
+                removeFd(fd);
+            }
+            result = ALOOPER_POLL_CALLBACK;
+        }
+    }
+    return result;
+}
+```
+
 - Looper::sendMessage() Native层发送消息
 
 
@@ -637,9 +803,22 @@ static void android_os_MessageQueue_nativeWake(JNIEnv* env, jobject obj, jint pt
 void NativeMessageQueue::wake() {
     mLooper->wake();
 }
-
 ```
 
+- android_os_MessageQueue_nativePollOnce()
+
+```
+static void android_os_MessageQueue_nativePollOnce(JNIEnv* env, jobject obj,
+        jint ptr, jint timeoutMillis) {
+    // 根据mPtr找到 nativeMessageQueue
+    NativeMessageQueue* nativeMessageQueue = reinterpret_cast<NativeMessageQueue*>(ptr);
+    nativeMessageQueue->pollOnce(timeoutMillis);
+}
+void NativeMessageQueue::pollOnce(int timeoutMillis) {
+    // 转发给Looper对象处理
+    mLooper->pollOnce(timeoutMillis);
+}
+```
 
 ## ~！@#￥%……&*（
 
