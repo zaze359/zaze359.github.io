@@ -239,6 +239,47 @@ java层实例化对象时, 同时native层也完成初始化（NativeMessageQueu
 ![image_1c9odn8dlocl1lnh18mkahqbdo9.png-85.5kB][MessageQueue于NativeMessageQueue]
 
 
+- postSyncBarrier() 同步屏障
+
+[同步屏障][同步屏障]
+
+Android 中的 Message 可以分了 同步消息和异步消息
+平时这两种消息没有什么区别, 只有当设置了 同步屏障时才有差异
+当设置了同步屏障时, 将会过滤这个同步屏障消息之后的执行的所有的同步消息
+所以同步屏障相当于一个过滤器，当有需要优先处理的消息时可以设置同步屏障
+
+```
+private int postSyncBarrier(long when) {
+    // 插入一条同步屏障消息
+    synchronized (this) {
+        final int token = mNextBarrierToken++;
+        final Message msg = Message.obtain();
+        msg.markInUse();
+        msg.when = when;
+        msg.arg1 = token;
+
+        Message prev = null;
+        Message p = mMessages;
+        if (when != 0) {
+            while (p != null && p.when <= when) {
+                prev = p;
+                p = p.next;
+            }
+        }
+        if (prev != null) {
+            msg.next = p;
+            prev.next = msg;
+        } else {
+            msg.next = p;
+            mMessages = msg;
+        }
+        return token;
+    }
+}
+```
+
+
+
 - 构造函数
 
 ```
@@ -313,71 +354,102 @@ final boolean enqueueMessage(Message msg, long when) {
 }
 ```
 
-- MessageQueue.next()
+- MessageQueue.next() --- 源码更新为8.1版本
 
 ```
-final Message next() {
-    int pendingIdleHandlerCount = -1; // IdleHander的数量, 下面有介绍IdleHandler
-    int nextPollTimeoutMillis = 0; // 空闲等待时间
-    for (;;) {
-        if (nextPollTimeoutMillis != 0) {
-            Binder.flushPendingCommands();
+ Message next() {
+        //如果消息循环已经退出并被处理，返回。
+        //如果应用程序尝试在退出后重新启动looper，就会发生这种情况。
+        final long ptr = mPtr;
+        if (ptr == 0) {
+            return null;
         }
-        // 传入NativeMessageQueue的地址, 和等待时间
-        nativePollOnce(mPtr, nextPollTimeoutMillis);
-        synchronized (this) {
-            final long now = SystemClock.uptimeMillis();
-            // 取出消息队列头部
-            final Message msg = mMessages;
-            if (msg != null) {
-                final long when = msg.when;
-                // 当前时间大于消息执行时间，消息队列指向下一条, 将执行的消息标记使用并返回
-                if (now >= when) {
-                    mBlocked = false;
-                    mMessages = msg.next;
-                    msg.next = null;
-                    msg.markInUse();
-                    return msg;
+        int pendingIdleHandlerCount = -1; // IdleHander的数量, 下面有介绍IdleHandler
+        int nextPollTimeoutMillis = 0; // 空闲等待时间
+        for (;;) {
+            if (nextPollTimeoutMillis != 0) {
+                Binder.flushPendingCommands();
+            }
+            // 传入NativeMessageQueue的地址, 和等待时间
+            nativePollOnce(ptr, nextPollTimeoutMillis);
+            synchronized (this) {
+                final long now = SystemClock.uptimeMillis();
+                Message prevMsg = null;
+                Message msg = mMessages;
+                if (msg != null && msg.target == null) {
+                    // msg.target == null 表示碰到了同步屏障
+                    // 遍历消息队列直到找到异步消息 或者 直到最后都没有找到
+                    do {
+                        prevMsg = msg;
+                        msg = msg.next;
+                    } while (msg != null && !msg.isAsynchronous());
+                }
+                if (msg != null) {
+                    // 当前时间大于消息执行时间，消息队列指向下一条, 将执行的消息标记使用并返回
+                    if (now < msg.when) {
+                        // 未到消息执行时间, 计算到可以执行的时间的时间差
+                        nextPollTimeoutMillis = (int) Math.min(msg.when - now, Integer.MAX_VALUE);
+                    } else {
+                        // 标记为不阻塞
+                        mBlocked = false;
+                        //  移除消息队列头
+                        if (prevMsg != null) {
+                            // 碰到过同步屏障
+                            // prevMsg表示最后一条同步消息
+                            // prevMsg.next()等同于mMessages
+                            prevMsg.next = msg.next;
+                        } else {
+                            // 没有碰到同步屏障是为null
+                            mMessages = msg.next;
+                        }
+                        msg.next = null;
+                        // 消息标记为已使用
+                        msg.markInUse();
+                        return msg;
+                    }
                 } else {
-                    nextPollTimeoutMillis = (int) Math.min(when - now, Integer.MAX_VALUE);
+                    nextPollTimeoutMillis = -1;
                 }
-            } else {
-                nextPollTimeoutMillis = -1;
+                if (mQuitting) {
+                    dispose();
+                    return null;
+                }
+                // 当前时间空闲, 看看有没有IdleHandler需要执行， 若没有则将当前线程状态设置为阻塞
+                if (pendingIdleHandlerCount < 0
+                        && (mMessages == null || now < mMessages.when)) {
+                    pendingIdleHandlerCount = mIdleHandlers.size();
+                }
+                if (pendingIdleHandlerCount <= 0) {
+                    mBlocked = true;
+                    continue;
+                }
+                if (mPendingIdleHandlers == null) {
+                    mPendingIdleHandlers = new IdleHandler[Math.max(pendingIdleHandlerCount, 4)];
+                }
+                mPendingIdleHandlers = mIdleHandlers.toArray(mPendingIdleHandlers);
             }
-            // 当前时间空闲, 看看有没有IdleHandler需要执行， 若没有则将当前线程状态设置为阻塞
-            if (pendingIdleHandlerCount < 0) {
-                pendingIdleHandlerCount = mIdleHandlers.size();
-            }
-            if (pendingIdleHandlerCount == 0) {
-                mBlocked = true;
-                continue;
-            }
-            if (mPendingIdleHandlers == null) {
-                mPendingIdleHandlers = new IdleHandler[Math.max(pendingIdleHandlerCount, 4)];
-            }
-            mPendingIdleHandlers = mIdleHandlers.toArray(mPendingIdleHandlers);
-        }
-        // 处理空闲消息
-        for (int i = 0; i < pendingIdleHandlerCount; i++) {
-            final IdleHandler idler = mPendingIdleHandlers[i];
-            mPendingIdleHandlers[i] = null; // release the reference to the handler
-            boolean keep = false;
-            try {
-                keep = idler.queueIdle();
-            } catch (Throwable t) {
-                Log.wtf("MessageQueue", "IdleHandler threw exception", t);
-            }
-            if (!keep) {
-                synchronized (this) {
-                    mIdleHandlers.remove(idler);
+            // 处理空闲消息
+            for (int i = 0; i < pendingIdleHandlerCount; i++) {
+                final IdleHandler idler = mPendingIdleHandlers[i];
+                mPendingIdleHandlers[i] = null; // release the reference to the handler
+                boolean keep = false;
+                try {
+                    keep = idler.queueIdle();
+                } catch (Throwable t) {
+                    Log.wtf(TAG, "IdleHandler threw exception", t);
+                }
+                if (!keep) {
+                    synchronized (this) {
+                        mIdleHandlers.remove(idler);
+                    }
                 }
             }
+            pendingIdleHandlerCount = 0;
+            nextPollTimeoutMillis = 0;
         }
-        pendingIdleHandlerCount = 0;
-        nextPollTimeoutMillis = 0;
     }
-}
 ```
+
 
 
 #### 1.4 消息处理器(Handler)
@@ -892,6 +964,6 @@ class IdleOnce implements MessageQueue.IdleHandler {
 
 [author]: https://zaze359.github.io
 [MessageQueue于NativeMessageQueue]: http://static.zybuluo.com/zaze/kbfxaf2elx70xzzpc1ue4n8m/image_1c9odn8dlocl1lnh18mkahqbdo9.png
-
 [Parcelable]:https://blog.csdn.net/justin_1107/article/details/72903006
+[同步屏障]:https://blog.csdn.net/asdgbc/article/details/79148180
 
