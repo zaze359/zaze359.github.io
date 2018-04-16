@@ -12,19 +12,19 @@ Tags : ZAZE
 ---
 
 
-## 消息机制篇
+# Android消息机制篇
 
 
-### 0. 消息驱动机制
+## 0. 消息驱动机制
 Android 扩展了线程的退出机制，在启动线程时，在线程内部创建一个消息队列， 然后让线程进入无限循环；
 在这个无限循环中，线程会不断的检查消息队列中是否是消息。如果需要执行某个任务，就向线程的消息队列中发送消息，循环检测到有消息到来 便会获取这个消息 进而执行它。如果没有则线程进入等待状态。
 
 
-#### 0.1 一图了解
+### 0.1 一图了解
 
 绘制中~~
 
-### 1. 浅见Java层
+## 1. 浅见Java层
 
 ```
 - Looper调用prepare(),在当前执行的线程中生成仅且一个Looper实例，这个实例包含一个MessageQueue对象
@@ -70,7 +70,7 @@ public class ThreadLocal<T> {
 }
 ```
 
-#### 1.1 消息(Message)
+### 1.1 消息(Message)
 
 了解一下[Parcelable][Parcelable]和Serializable序列化接口, 号称快10倍, 不过使用相对复杂。
 
@@ -159,7 +159,7 @@ public final class Message implements Parcelable {
 
 
 
-#### 1.2 消息循环(Looper)
+### 1.2 消息循环(Looper)
 
 ```
 - prepare()与当前线程绑定。
@@ -231,7 +231,7 @@ public class Looper {
 }
 ```
 
-#### 1.3 消息队列(MessageQueue)
+### 1.3 消息队列(MessageQueue)
 
 java层实例化对象时, 同时native层也完成初始化（NativeMessageQueue）
 保持了一个按照执行时间排序的消息队列，提供了对消息队列管理的一些api
@@ -277,8 +277,6 @@ private int postSyncBarrier(long when) {
     }
 }
 ```
-
-
 
 - 构造函数
 
@@ -358,101 +356,99 @@ final boolean enqueueMessage(Message msg, long when) {
 
 ```
  Message next() {
-        //如果消息循环已经退出并被处理，返回。
-        //如果应用程序尝试在退出后重新启动looper，就会发生这种情况。
-        final long ptr = mPtr;
-        if (ptr == 0) {
-            return null;
-        }
-        int pendingIdleHandlerCount = -1; // IdleHander的数量, 下面有介绍IdleHandler
-        int nextPollTimeoutMillis = 0; // 空闲等待时间
-        for (;;) {
-            if (nextPollTimeoutMillis != 0) {
-                Binder.flushPendingCommands();
-            }
-            // 传入NativeMessageQueue的地址, 和等待时间
-            nativePollOnce(ptr, nextPollTimeoutMillis);
-            synchronized (this) {
-                final long now = SystemClock.uptimeMillis();
-                Message prevMsg = null;
-                Message msg = mMessages;
-                if (msg != null && msg.target == null) {
-                    // msg.target == null 表示碰到了同步屏障
-                    // 遍历消息队列直到找到异步消息 或者 直到最后都没有找到
-                    do {
-                        prevMsg = msg;
-                        msg = msg.next;
-                    } while (msg != null && !msg.isAsynchronous());
-                }
-                if (msg != null) {
-                    // 当前时间大于消息执行时间，消息队列指向下一条, 将执行的消息标记使用并返回
-                    if (now < msg.when) {
-                        // 未到消息执行时间, 计算到可以执行的时间的时间差
-                        nextPollTimeoutMillis = (int) Math.min(msg.when - now, Integer.MAX_VALUE);
-                    } else {
-                        // 标记为不阻塞
-                        mBlocked = false;
-                        //  移除消息队列头
-                        if (prevMsg != null) {
-                            // 碰到过同步屏障
-                            // prevMsg表示最后一条同步消息
-                            // prevMsg.next()等同于mMessages
-                            prevMsg.next = msg.next;
-                        } else {
-                            // 没有碰到同步屏障是为null
-                            mMessages = msg.next;
-                        }
-                        msg.next = null;
-                        // 消息标记为已使用
-                        msg.markInUse();
-                        return msg;
-                    }
-                } else {
-                    nextPollTimeoutMillis = -1;
-                }
-                if (mQuitting) {
-                    dispose();
-                    return null;
-                }
-                // 当前时间空闲, 看看有没有IdleHandler需要执行， 若没有则将当前线程状态设置为阻塞
-                if (pendingIdleHandlerCount < 0
-                        && (mMessages == null || now < mMessages.when)) {
-                    pendingIdleHandlerCount = mIdleHandlers.size();
-                }
-                if (pendingIdleHandlerCount <= 0) {
-                    mBlocked = true;
-                    continue;
-                }
-                if (mPendingIdleHandlers == null) {
-                    mPendingIdleHandlers = new IdleHandler[Math.max(pendingIdleHandlerCount, 4)];
-                }
-                mPendingIdleHandlers = mIdleHandlers.toArray(mPendingIdleHandlers);
-            }
-            // 处理空闲消息
-            for (int i = 0; i < pendingIdleHandlerCount; i++) {
-                final IdleHandler idler = mPendingIdleHandlers[i];
-                mPendingIdleHandlers[i] = null; // release the reference to the handler
-                boolean keep = false;
-                try {
-                    keep = idler.queueIdle();
-                } catch (Throwable t) {
-                    Log.wtf(TAG, "IdleHandler threw exception", t);
-                }
-                if (!keep) {
-                    synchronized (this) {
-                        mIdleHandlers.remove(idler);
-                    }
-                }
-            }
-            pendingIdleHandlerCount = 0;
-            nextPollTimeoutMillis = 0;
-        }
+    //如果消息循环已经退出并被处理，返回。
+    //如果应用程序尝试在退出后重新启动looper，就会发生这种情况。
+    final long ptr = mPtr;
+    if (ptr == 0) {
+        return null;
     }
+    int pendingIdleHandlerCount = -1; // IdleHander的数量, 下面有介绍IdleHandler
+    int nextPollTimeoutMillis = 0; // 空闲等待时间
+    for (;;) {
+        if (nextPollTimeoutMillis != 0) {
+            Binder.flushPendingCommands();
+        }
+        // 传入NativeMessageQueue的地址, 和等待时间
+        nativePollOnce(ptr, nextPollTimeoutMillis);
+        synchronized (this) {
+            final long now = SystemClock.uptimeMillis();
+            Message prevMsg = null;
+            Message msg = mMessages;
+            if (msg != null && msg.target == null) {
+                // msg.target == null 表示碰到了同步屏障
+                // 遍历消息队列直到找到异步消息 或者 直到最后都没有找到
+                do {
+                    prevMsg = msg;
+                    msg = msg.next;
+                } while (msg != null && !msg.isAsynchronous());
+            }
+            if (msg != null) {
+                // 当前时间大于消息执行时间，消息队列指向下一条, 将执行的消息标记使用并返回
+                if (now < msg.when) {
+                    // 未到消息执行时间, 计算到可以执行的时间的时间差
+                    nextPollTimeoutMillis = (int) Math.min(msg.when - now, Integer.MAX_VALUE);
+                } else {
+                    // 标记为不阻塞
+                    mBlocked = false;
+                    //  移除消息队列头
+                    if (prevMsg != null) {
+                        // 碰到过同步屏障
+                        // prevMsg表示最后一条同步消息
+                        // prevMsg.next()等同于mMessages
+                        prevMsg.next = msg.next;
+                    } else {
+                        // 没有碰到同步屏障是为null
+                        mMessages = msg.next;
+                    }
+                    msg.next = null;
+                    // 消息标记为已使用
+                    msg.markInUse();
+                    return msg;
+                }
+            } else {
+                nextPollTimeoutMillis = -1;
+            }
+            if (mQuitting) {
+                dispose();
+                return null;
+            }
+            // 当前时间空闲, 看看有没有IdleHandler需要执行， 若没有则将当前线程状态设置为阻塞
+            if (pendingIdleHandlerCount < 0
+                    && (mMessages == null || now < mMessages.when)) {
+                pendingIdleHandlerCount = mIdleHandlers.size();
+            }
+            if (pendingIdleHandlerCount <= 0) {
+                mBlocked = true;
+                continue;
+            }
+            if (mPendingIdleHandlers == null) {
+                mPendingIdleHandlers = new IdleHandler[Math.max(pendingIdleHandlerCount, 4)];
+            }
+            mPendingIdleHandlers = mIdleHandlers.toArray(mPendingIdleHandlers);
+        }
+        // 处理空闲消息
+        for (int i = 0; i < pendingIdleHandlerCount; i++) {
+            final IdleHandler idler = mPendingIdleHandlers[i];
+            mPendingIdleHandlers[i] = null; // release the reference to the handler
+            boolean keep = false;
+            try {
+                keep = idler.queueIdle();
+            } catch (Throwable t) {
+                Log.wtf(TAG, "IdleHandler threw exception", t);
+            }
+            if (!keep) {
+                synchronized (this) {
+                    mIdleHandlers.remove(idler);
+                }
+            }
+        }
+        pendingIdleHandlerCount = 0;
+        nextPollTimeoutMillis = 0;
+    }
+}
 ```
 
-
-
-#### 1.4 消息处理器(Handler)
+### 1.4 消息处理器(Handler)
 
 Handle是Looper线程的消息处理器, 承担了发送消息和处理消息两部分工作。
 
@@ -545,10 +541,10 @@ private static void handleCallback(Message message) {
 }
 ```
 
-### 2. 深入native层
+## 2. 深入native层
 
 
-#### 2.1 Looper.cpp
+### 2.1 Looper.cpp
 
 Java层的Looper主要是负责从MessageQueue中循环读取消息分发给Handler处理
 Native层Looper主要是负责监听ReadPipe(读管道)，发送消息(Java中是由Handler处理的)
@@ -810,7 +806,7 @@ Done: ;
 - Looper::sendMessage() Native层发送消息
 
 
-#### 2.2 android_os_MessageQueue.cpp
+### 2.2 android_os_MessageQueue.cpp
 
 这里其实也实现了和Java层Looper.prepare()方法相同的功能 
 
@@ -892,7 +888,7 @@ void NativeMessageQueue::pollOnce(int timeoutMillis) {
 }
 ```
 
-## ~！@#￥%……&*（
+## 3. ~！@#￥%……&*（
 
 ### HandleThread
 
