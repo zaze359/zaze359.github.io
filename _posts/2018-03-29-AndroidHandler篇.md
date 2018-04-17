@@ -2,7 +2,7 @@
 # Android消息机制篇
 
 ---
-layout: default
+layout: post
 ---
 
 Tags : ZAZE
