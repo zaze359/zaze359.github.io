@@ -1,9 +1,7 @@
 # AndroidFramework总篇
 
 ---
-
 layout: default
-
 ---
 
 Tags : ZAZE

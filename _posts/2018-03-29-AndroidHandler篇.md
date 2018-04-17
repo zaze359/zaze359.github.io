@@ -2,9 +2,7 @@
 # Android消息机制篇
 
 ---
-
 layout: default
-
 ---
 
 Tags : ZAZE
