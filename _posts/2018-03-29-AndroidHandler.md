@@ -1,5 +1,10 @@
+
+# Android消息机制篇
+
 ---
+
 layout: default
+
 ---
 
 Tags : ZAZE
@@ -9,10 +14,6 @@ Tags : ZAZE
 [TOC]
 
 ---
-
-
-# Android消息机制篇
-
 
 ## 0. 消息驱动机制
 Android 扩展了线程的退出机制，在启动线程时，在线程内部创建一个消息队列， 然后让线程进入无限循环；
