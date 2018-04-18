@@ -46,7 +46,5 @@ Tags : ZAZE
 作者 : [口戛口崩月危.Z][author]
 
 [author]: https://zaze359.github.io
-[img_1_Android 系统架构图]:
-http://static.zybuluo.com/zaze/pexn0x9kdfj7afw4mqljnhhc/image_1c9bktt8u2h8pepojn1t966uo9.png
-[link_1_深入理解Android]:
-https://baike.baidu.com/item/%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3Android/3333024?fr=aladdin 
+[img_1_Android 系统架构图]:http://static.zybuluo.com/zaze/pexn0x9kdfj7afw4mqljnhhc/image_1c9bktt8u2h8pepojn1t966uo9.png
+[link_1_深入理解Android]:https://baike.baidu.com/item/%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3Android/3333024?fr=aladdin 
