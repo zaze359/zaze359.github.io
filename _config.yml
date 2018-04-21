@@ -24,7 +24,7 @@ github_username:  zaze359
 
 # Build settings
 markdown: kramdown
-highlighter: Pygments
+highlighter: rouge
 theme: minima
 plugins:
   - jekyll-feed
