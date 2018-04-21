@@ -1,7 +1,8 @@
-# AndroidFramework总篇
-
 ---
 layout: post
+title:  "AndroidFramework总篇"
+date:   2018-04-17
+categories: jekyll update
 ---
 
 Tags : ZAZE
@@ -10,6 +11,8 @@ Tags : ZAZE
 [TOC]
 
 ---
+
+# AndroidFramework总篇
 
 ## 参考资料
 

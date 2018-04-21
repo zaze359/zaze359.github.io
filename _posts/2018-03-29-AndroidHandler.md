@@ -1,8 +1,8 @@
-
-# Android消息机制篇
-
 ---
 layout: post
+title:  "Android消息机制篇"
+date:   2018-03-29
+categories: jekyll update
 ---
 
 Tags : ZAZE
@@ -12,6 +12,9 @@ Tags : ZAZE
 [TOC]
 
 ---
+
+# Android消息机制篇
+
 
 ## 0. 消息驱动机制
 Android 扩展了线程的退出机制，在启动线程时，在线程内部创建一个消息队列， 然后让线程进入无限循环；
@@ -72,7 +75,7 @@ public class ThreadLocal<T> {
 
 了解一下[Parcelable][Parcelable]和Serializable序列化接口, 号称快10倍, 不过使用相对复杂。
 
-```
+```ruby
 public final class Message implements Parcelable {
     // 消息码, 区分消息类型
     public int what;
