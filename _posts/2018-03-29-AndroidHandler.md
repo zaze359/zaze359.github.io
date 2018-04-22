@@ -1,15 +1,18 @@
 ---
+
 layout: post
 title:  "Android消息机制篇"
 date:   2018-03-29
-categories: jekyll update
----
-
-Tags : ZAZE
+categories: android
 
 ---
+
+Tags : ZAZE android
 
 [TOC]
+
+* TOC
+{:toc}
 
 ---
 
@@ -27,16 +30,19 @@ Android 扩展了线程的退出机制，在启动线程时，在线程内部创
 
 ## 1. 浅见Java层
 
-```
+```html
 - Looper调用prepare(),在当前执行的线程中生成仅且一个Looper实例，这个实例包含一个MessageQueue对象
 - 调用loop()方法,在当前线程进行无限循环，不断从MessageQueue中读取Handler发来的消息。
 - 生成Handler实例同时获取到当前线程的Looper对象 
 - sendMessage方法, 将自身赋值给msg.target, 并将消息放入MessageQueue中
 - 回调创建这个消息的handler中的dispathMessage方法，
 ```
-```
-构建自己Looper线程，体验消息驱动。(可以直接使用Android 提供的HandlerThread)
-Looper 线程的特点就是 run方法执行完成之后不会推出 而是进入一个loop消息循环。
+
+```ruby
+/**
+ * 构建自己Looper线程，体验消息驱动。(可以直接使用Android 提供的HandlerThread)
+ * Looper 线程的特点就是 run方法执行完成之后不会推出 而是进入一个loop消息循环。
+ **/
 class LooperThread extends Thread {
     public Handler mHandler;
     
@@ -44,7 +50,7 @@ class LooperThread extends Thread {
         Looper.prepare();
         mHandler = new Handler() {
             public void handleMessage(Message msg) {
-            // 处理消息
+                // 处理消息
             }
         };
         Looper.loop();
@@ -52,11 +58,12 @@ class LooperThread extends Thread {
 }
 ```
 
-```
-穿插一下ThreadLocal(线程局部变量)
-实质是线程的变量值的一个副本
-而他存取的数据，就是的当前线程的数据
-
+```ruby
+/**
+ * 穿插一下ThreadLocal(线程局部变量)
+ * 实质是线程的变量值的一个副本
+ * 而他存取的数据，就是的当前线程的数据
+ **/
 public class ThreadLocal<T> {
     public T get() {
         Thread t = Thread.currentThread();
@@ -77,7 +84,7 @@ public class ThreadLocal<T> {
 
 ```ruby
 public final class Message implements Parcelable {
-    // 消息码, 区分消息类型
+    /*消息码, 区分消息类型*/
     public int what;
     ...
     // 表示什么时候执行

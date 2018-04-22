@@ -15,6 +15,7 @@
 # in the templates via {{ site.myvariable }}.
 title: 吭哧吭哧
 email: 359635919@qq.com
+author: zaze.gbc
 description: >- # this means to ignore newlines until "baseurl:"
   Read The Fucking Source Code --- Linus Torvalds
 baseurl: "" # the subpath of your site, e.g. /blog
@@ -23,8 +24,20 @@ twitter_username: ""
 github_username:  zaze359
 
 # Build settings
+
 markdown: kramdown
 highlighter: rouge
+kramdown:
+  input: GFM
+  # enable_coderay: false
+  # syntax_highlighter: rouge
+  # hard_wrap: false
+  # extensions:
+  #   - autolink
+  #   - footnotes
+  #   - smart
+  #   - table
+
 theme: minima
 plugins:
   - jekyll-feed
