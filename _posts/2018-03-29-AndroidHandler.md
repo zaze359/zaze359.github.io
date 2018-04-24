@@ -18,6 +18,13 @@ Tags : ZAZE android
 
 # Android消息机制篇
 
+## 参考资料
+
+以上部分图片和解读说明摘自以下参考资料。
+
+> **<< Android的设计和实现:卷I>>**
+> **<<深入理解Android: 卷I>>**
+
 
 ## 0. 消息驱动机制
 Android 扩展了线程的退出机制，在启动线程时，在线程内部创建一个消息队列， 然后让线程进入无限循环；
@@ -174,7 +181,7 @@ public final class Message implements Parcelable {
 - loop()方法，循环调用MessageQueue.next()获取消息(消息驱动)，交给Message.target.dispatchMessage分发处理(target指Handler, 在Handler.enqueueMessage中被赋值)。
 ```
 
-```
+```ruby
 public class Looper {
     // 定义一个线程局部对象存储Looper对象
     static final ThreadLocal<Looper> sThreadLocal = new ThreadLocal<Looper>();
@@ -253,10 +260,10 @@ java层实例化对象时, 同时native层也完成初始化（NativeMessageQueu
 
 Android 中的 Message 可以分了 同步消息和异步消息
 平时这两种消息没有什么区别, 只有当设置了 同步屏障时才有差异
-当设置了同步屏障时, 将会过滤这个同步屏障消息之后的执行的所有的同步消息
+当设置了同步屏障时, 将会过滤这个同步屏障消息之后执行的所有的同步消息
 所以同步屏障相当于一个过滤器，当有需要优先处理的消息时可以设置同步屏障
 
-```
+```ruby
 private int postSyncBarrier(long when) {
     // 插入一条同步屏障消息
     synchronized (this) {
@@ -288,7 +295,7 @@ private int postSyncBarrier(long when) {
 
 - 构造函数
 
-```
+```ruby
 // 按照执行时间排序的消息队列
 Message mMessages;
 public class MessageQueue {
@@ -307,7 +314,7 @@ public class MessageQueue {
 
 - MessageQueue.enqueueMessage()
 
-```
+```ruby
 final boolean enqueueMessage(Message msg, long when) {
     // 判断消息是否被使用, 新消息一定是未使用, 在next()里面被处理的消息将被标记为FLAG_IN_USE
     if (msg.isInUse()) {
@@ -362,7 +369,7 @@ final boolean enqueueMessage(Message msg, long when) {
 
 - MessageQueue.next() --- 源码更新为8.1版本
 
-```
+```ruby
  Message next() {
     //如果消息循环已经退出并被处理，返回。
     //如果应用程序尝试在退出后重新启动looper，就会发生这种情况。
@@ -462,7 +469,7 @@ Handle是Looper线程的消息处理器, 承担了发送消息和处理消息两
 
 - 构造函数
 
-```
+```ruby
 final MessageQueue mQueue;
 final Looper mLooper;
 final Callback mCallback;
@@ -484,9 +491,8 @@ public Handler() {
 
 - Handler.post(new Runnable())
 
-```
+```ruby
 实际是发送了一条消息,此处的Runnable并没有创建线程，只是作为一个callback使用
-
 public final boolean post(Runnable r){
    return  sendMessageDelayed(getPostMessage(r), 0);
 }
@@ -498,16 +504,12 @@ private static Message getPostMessage(Runnable r) {
 }
 ```
 
-
 - Handler.sendMessageAtTime()
 
-```
+```ruby
 将自身赋值给msg.target, 并将消息放入MessageQueue中
-
 /**
  * uptimeMillis 表示何时处理这个消息
- *
- *
  **/
 public boolean sendMessageAtTime(Message msg, long uptimeMillis){
     boolean sent = false;
@@ -529,7 +531,7 @@ public boolean sendMessageAtTime(Message msg, long uptimeMillis){
 
 - **Handler.dispatchMessage()消息分配**
 
-```
+```ruby
 以下源码可以看出, 当使用post()发送消息时, 最后会调用runnable.run()回调。sendMessage()则是执行handleMessage()， 这个就是我们构建对象时重写的方法
 
 public void dispatchMessage(Message msg) {  
@@ -559,7 +561,7 @@ Native层Looper主要是负责监听ReadPipe(读管道)，发送消息(Java中�
 
 - 构造函数
 
-```
+```c
 Looper::Looper(bool allowNonCallbacks) :
         mAllowNonCallbacks(allowNonCallbacks), mSendingMessage(false),
         mResponseIndex(0), mNextMessageUptime(LLONG_MAX) {
@@ -597,7 +599,7 @@ Looper::Looper(bool allowNonCallbacks) :
 
 - Looper::getForThread(); Looper::setForThread();
 
-```
+```c
 // 将Looper放入到线程中
 void Looper::setForThread(const sp<Looper>& looper) {
     sp<Looper> old = getForThread(); // also has side-effect of initializing TLS
@@ -627,7 +629,7 @@ sp<Looper> Looper::getForThread() {
 
 - Looper::wake() 唤醒
 
-```
+```c
 void Looper::wake() {
     ...
     ssize_t nWrite;
@@ -646,7 +648,7 @@ void Looper::wake() {
 
 - Looper::pollOnce();
 
-```
+```c
 inline int pollOnce(int timeoutMillis) {
     return pollOnce(timeoutMillis, NULL, NULL, NULL);
 }
@@ -686,7 +688,7 @@ int Looper::pollOnce(int timeoutMillis, int* outFd, int* outEvents, void** outDa
 
 - Looper::pollInner()
 
-```
+```c
 int Looper::pollInner(int timeoutMillis) {
     ...
     // 根据下一条消息的到期时间调整超时时间。
@@ -820,7 +822,7 @@ Done: ;
 
 - 构造函数
 
-```
+```c++
 NativeMessageQueue::NativeMessageQueue() {
     // 查询是否存在
     mLooper = Looper::getForThread();
@@ -834,7 +836,7 @@ NativeMessageQueue::NativeMessageQueue() {
 
 - android_os_MessageQueue_nativeInit()
 
-```
+```c++
 /**
  * 创建一个NativeMessageQueue对象
  * 将Java层与Native层的MessageQueue关联起来
@@ -868,7 +870,7 @@ static struct {
 
 -  android_os_MessageQueue_nativeWake
 
-```
+```c++
 static void android_os_MessageQueue_nativeWake(JNIEnv* env, jobject obj, jint ptr) {
     // ptr 是java层MessageQueue的mPtr成员变量，存储了JNI层创建的 NativeMessageQueue的地址
     NativeMessageQueue* nativeMessageQueue = reinterpret_cast<NativeMessageQueue*>(ptr);
@@ -883,7 +885,7 @@ void NativeMessageQueue::wake() {
 
 - android_os_MessageQueue_nativePollOnce()
 
-```
+```c++
 static void android_os_MessageQueue_nativePollOnce(JNIEnv* env, jobject obj,
         jint ptr, jint timeoutMillis) {
     // 根据mPtr找到 nativeMessageQueue
@@ -926,7 +928,7 @@ void NativeMessageQueue::pollOnce(int timeoutMillis) {
 
 * 使用
 
-```
+```java
 可以参考ActivityThread类中的空闲时执行gc流程
 
 class IdleForever implements MessageQueue.IdleHandler {
@@ -953,18 +955,8 @@ class IdleOnce implements MessageQueue.IdleHandler {
 }
 ```
 
-## 参考资料
-
-以上部分图片和解读说明摘自以下参考资料。
-
-> **<< Android的设计和实现:卷I>>**
-> **<<深入理解Android: 卷I>>**
-
-
-[back](./)
-
 ------
-作者 : [口戛口崩月危.Z][author]
+苦工 : [口戛口崩月危.Z][author]
 
 [author]: https://zaze359.github.io
 [MessageQueue于NativeMessageQueue]: http://static.zybuluo.com/zaze/kbfxaf2elx70xzzpc1ue4n8m/image_1c9odn8dlocl1lnh18mkahqbdo9.png

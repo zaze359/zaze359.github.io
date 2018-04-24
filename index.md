@@ -3,6 +3,6 @@
 # To modify the layout, see https://jekyllrb.com/docs/themes/#overriding-theme-defaults
 
 layout: home
-title: 哈哈哈哈哈哈
-list_title: "@#$%^%$#@"
+title: 我是标题
+list_title: ">_<||| TM我也是标题"
 ---

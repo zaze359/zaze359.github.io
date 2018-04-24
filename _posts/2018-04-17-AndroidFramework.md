@@ -50,7 +50,7 @@ Tags : ZAZE android
 
 
 ------
-作者 : [口戛口崩月危.Z][author]
+苦工 : [口戛口崩月危.Z][author]
 
 [author]: https://zaze359.github.io
 [img_1_Android 系统架构图]:http://static.zybuluo.com/zaze/pexn0x9kdfj7afw4mqljnhhc/image_1c9bktt8u2h8pepojn1t966uo9.png
