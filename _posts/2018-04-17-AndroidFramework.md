@@ -34,7 +34,7 @@ Tags : ZAZE android
 ❑ Framework 层：这一层大部分用 Java 语言编写，它是 Android 平台上 Java 世界的基石。
 ❑ Applications 层：与用户直接交互的就是这些应用程序，它们都是用 Java 开发的
 
-![image_1c9bktt8u2h8pepojn1t966uo9.png-417.2kB][img_1_Android 系统架构图]
+![Android 系统架构图][img_1_Android 系统架构图]
 
 ## 启动篇
 
