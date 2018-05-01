@@ -29,14 +29,14 @@ markdown: kramdown
 highlighter: rouge
 kramdown:
   input: GFM
-  # enable_coderay: false
-  # syntax_highlighter: rouge
-  # hard_wrap: false
-  # extensions:
-  #   - autolink
-  #   - footnotes
-  #   - smart
-  #   - table
+  enable_coderay: false
+  syntax_highlighter: rouge
+  hard_wrap: false
+  extensions:
+    - autolink
+    - footnotes
+    - smart
+    - table
 
 theme: minima
 plugins:

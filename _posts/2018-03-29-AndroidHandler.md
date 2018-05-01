@@ -7,7 +7,7 @@ categories: android
 
 ---
 
-Tags : ZAZE android
+Tags : zaze android
 
 [TOC]
 
@@ -37,15 +37,14 @@ Android 扩展了线程的退出机制，在启动线程时，在线程内部创
 
 ## 1. 浅见Java层
 
-```html
+
 - Looper调用prepare(),在当前执行的线程中生成仅且一个Looper实例，这个实例包含一个MessageQueue对象
 - 调用loop()方法,在当前线程进行无限循环，不断从MessageQueue中读取Handler发来的消息。
 - 生成Handler实例同时获取到当前线程的Looper对象 
 - sendMessage方法, 将自身赋值给msg.target, 并将消息放入MessageQueue中
 - 回调创建这个消息的handler中的dispathMessage方法，
-```
 
-```ruby
+```java
 /**
  * 构建自己Looper线程，体验消息驱动。(可以直接使用Android 提供的HandlerThread)
  * Looper 线程的特点就是 run方法执行完成之后不会推出 而是进入一个loop消息循环。
@@ -65,7 +64,7 @@ class LooperThread extends Thread {
 }
 ```
 
-```ruby
+```java
 /**
  * 穿插一下ThreadLocal(线程局部变量)
  * 实质是线程的变量值的一个副本
@@ -89,7 +88,7 @@ public class ThreadLocal<T> {
 
 了解一下[Parcelable][Parcelable]和Serializable序列化接口, 号称快10倍, 不过使用相对复杂。
 
-```ruby
+```java
 public final class Message implements Parcelable {
     /*消息码, 区分消息类型*/
     public int what;
@@ -172,16 +171,12 @@ public final class Message implements Parcelable {
 }
 ```
 
-
-
 ### 1.2 消息循环(Looper)
 
-```
 - prepare()与当前线程绑定。
 - loop()方法，循环调用MessageQueue.next()获取消息(消息驱动)，交给Message.target.dispatchMessage分发处理(target指Handler, 在Handler.enqueueMessage中被赋值)。
-```
 
-```ruby
+```java
 public class Looper {
     // 定义一个线程局部对象存储Looper对象
     static final ThreadLocal<Looper> sThreadLocal = new ThreadLocal<Looper>();
@@ -263,7 +258,7 @@ Android 中的 Message 可以分了 同步消息和异步消息
 当设置了同步屏障时, 将会过滤这个同步屏障消息之后执行的所有的同步消息
 所以同步屏障相当于一个过滤器，当有需要优先处理的消息时可以设置同步屏障
 
-```ruby
+```java
 private int postSyncBarrier(long when) {
     // 插入一条同步屏障消息
     synchronized (this) {
@@ -295,7 +290,7 @@ private int postSyncBarrier(long when) {
 
 - 构造函数
 
-```ruby
+```java
 // 按照执行时间排序的消息队列
 Message mMessages;
 public class MessageQueue {
@@ -314,7 +309,7 @@ public class MessageQueue {
 
 - MessageQueue.enqueueMessage()
 
-```ruby
+```java
 final boolean enqueueMessage(Message msg, long when) {
     // 判断消息是否被使用, 新消息一定是未使用, 在next()里面被处理的消息将被标记为FLAG_IN_USE
     if (msg.isInUse()) {
@@ -369,7 +364,7 @@ final boolean enqueueMessage(Message msg, long when) {
 
 - MessageQueue.next() --- 源码更新为8.1版本
 
-```ruby
+```java
  Message next() {
     //如果消息循环已经退出并被处理，返回。
     //如果应用程序尝试在退出后重新启动looper，就会发生这种情况。
@@ -469,7 +464,7 @@ Handle是Looper线程的消息处理器, 承担了发送消息和处理消息两
 
 - 构造函数
 
-```ruby
+```java
 final MessageQueue mQueue;
 final Looper mLooper;
 final Callback mCallback;
@@ -491,8 +486,9 @@ public Handler() {
 
 - Handler.post(new Runnable())
 
-```ruby
 实际是发送了一条消息,此处的Runnable并没有创建线程，只是作为一个callback使用
+
+```java
 public final boolean post(Runnable r){
    return  sendMessageDelayed(getPostMessage(r), 0);
 }
@@ -506,8 +502,9 @@ private static Message getPostMessage(Runnable r) {
 
 - Handler.sendMessageAtTime()
 
-```ruby
 将自身赋值给msg.target, 并将消息放入MessageQueue中
+
+```java
 /**
  * uptimeMillis 表示何时处理这个消息
  **/
@@ -531,9 +528,9 @@ public boolean sendMessageAtTime(Message msg, long uptimeMillis){
 
 - **Handler.dispatchMessage()消息分配**
 
-```ruby
 以下源码可以看出, 当使用post()发送消息时, 最后会调用runnable.run()回调。sendMessage()则是执行handleMessage()， 这个就是我们构建对象时重写的方法
 
+```java
 public void dispatchMessage(Message msg) {  
     if (msg.callback != null) {  
         handleCallback(msg);  
@@ -928,9 +925,9 @@ void NativeMessageQueue::pollOnce(int timeoutMillis) {
 
 * 使用
 
-```java
 可以参考ActivityThread类中的空闲时执行gc流程
 
+```java
 class IdleForever implements MessageQueue.IdleHandler {
     /**
      * @return true : 保持此Idle一直在Handler中, 每次线程执行完后都会在这执行.
