@@ -48,7 +48,7 @@ Android 扩展了线程的退出机制，在启动线程时，在线程内部创
 /**
  * 构建自己Looper线程，体验消息驱动。(可以直接使用Android 提供的HandlerThread)
  * Looper 线程的特点就是 run方法执行完成之后不会推出 而是进入一个loop消息循环。
- **/
+ */
 class LooperThread extends Thread {
     public Handler mHandler;
     
@@ -69,7 +69,7 @@ class LooperThread extends Thread {
  * 穿插一下ThreadLocal(线程局部变量)
  * 实质是线程的变量值的一个副本
  * 而他存取的数据，就是的当前线程的数据
- **/
+ */
 public class ThreadLocal<T> {
     public T get() {
         Thread t = Thread.currentThread();
@@ -107,7 +107,7 @@ public final class Message implements Parcelable {
     
     /**
      * 获取消息的通用方法
-     **/
+     */
     public static Message obtain() {
         synchronized (sPoolSync) {
             if (sPool != null) {
@@ -143,7 +143,7 @@ public final class Message implements Parcelable {
      * 此处完成了消息池的初始化
      * 使用消息的一方(),只要调用了recycle方法便把会废弃的消息放入消息池中以便重新利用。
      * 放入时这个消息的数据将被清空, 若要使用消息池中的消息, 需要调用obtain方法重新初始化
-     **/
+     */
     public void recycle() {
         clearForRecycle();
         synchronized (sPoolSync) {
@@ -188,7 +188,7 @@ public class Looper {
      * 建立了MessageQueue和NativeMessageQueue的关系
      * 初始化了Native层的Looper
      * 持有当前线程的引用
-     **/
+     */
     private Looper() {
         // 创建了MessageQueue对象
         mQueue = new MessageQueue();
@@ -201,7 +201,7 @@ public class Looper {
     /**
      *  prepare()只能被调用一次, 否则直接抛出异常
      *  Looper对象存入ThreadLocal ,保证一个线程中只有一个Looper
-     **/
+     */
     private static void prepare(boolean quitAllowed) {
         if (sThreadLocal.get() != null) {
             throw new RuntimeException("Only one Looper may be created per thread");
@@ -211,7 +211,7 @@ public class Looper {
     
     /**
      * loop 必须在prepare()后执行，否则报错
-     **/
+     */
     public static void loop() {
         Looper me = myLooper();
         if (me == null) {
@@ -507,7 +507,7 @@ private static Message getPostMessage(Runnable r) {
 ```java
 /**
  * uptimeMillis 表示何时处理这个消息
- **/
+ */
 public boolean sendMessageAtTime(Message msg, long uptimeMillis){
     boolean sent = false;
     MessageQueue queue = mQueue;
@@ -839,7 +839,7 @@ NativeMessageQueue::NativeMessageQueue() {
  * 将Java层与Native层的MessageQueue关联起来
  * 从而在Java层中可以通过mPtr成员变量来访问Native层的NativeMessageQueue对象
  * [obj]: 表示调用native 的Java类
- **/
+ */
 static void android_os_MessageQueue_nativeInit(JNIEnv* env, jobject obj) {
     // JNI层创建一个NativeMessageQueue对象
     NativeMessageQueue* nativeMessageQueue = new NativeMessageQueue();
